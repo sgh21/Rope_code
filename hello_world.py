@@ -1,7 +1,6 @@
 
 from omni.isaac.examples.base_sample import BaseSample
 import omni.replicator.core as rep
-import omni.usd
 from omni.isaac.franka import Franka
 from omni.isaac.core import objects,World,tasks
 from omni.isaac.franka.controllers import PickPlaceController
@@ -12,8 +11,9 @@ from omni.physx.scripts import physicsUtils
 from omni.isaac.core.utils.stage import get_current_stage
 from omni.physx.scripts import utils
 import sys
-import os
-sys.path.append(r'E:/omniverse/isaac_sim-2023.1.1/extension_examples/user_examples')
+sys.path.append(r'D:/softwares/python3.10.4/Lib/site-packages')
+import pandas as pd
+sys.path.append(r'D:/Documents/SRT/ov/pkg/isaac_sim-2023.1.1/extension_examples/user_examples')
 from random_target import randomTarget
 import numpy as np
 import time
@@ -69,7 +69,7 @@ class MoveRope(tasks.BaseTask):
         self._coneAngleLimit = 5 #np.pi/36
         self._density = 50* 27*0.01  # 变小可以看出力的作用变小，但没有看出阻尼和刚度的影响
         # Force or acceleration = stiffness * (targetPosition - position)>damping * (targetVelocity - velocity)
-        self._rope_damping = 100#1*0.01*0.01# *0.00001 nothing happened# *10**10 nothing happened # mass*DIST_UNITS*DIST_UNITS/second/degrees.
+        self._rope_damping = 0#1*0.01*0.01# *0.00001 nothing happened# *10**10 nothing happened # mass*DIST_UNITS*DIST_UNITS/second/degrees.
         self._rope_stiffness =10 #0.1*0.01*0.01# *0.00001 nothing happened# *10**10 nothing happened#: mass*DIST_UNITS*DIST_UNITS/degrees/second/second
         # self._max_force = 10 #mass*DIST_UNITS*DIST_UNITS/second/second
         # configure original position:
@@ -308,12 +308,6 @@ class MoveRope(tasks.BaseTask):
         timeCode=Sdf.TimeCode()
         timeCode.GetValue()
         instancerPosition = self._rboInstancer.GetPositionsAttr().Get(timeCode)
-        # # 尝试输出关节力
-        # timeCode=Sdf.TimeCode()
-        # timeCode.GetValue()
-        # force=[]
-        # for arr in self._arr:
-        #     force.append(arr.Get(timeCode))
         observations={
             "pointInstancer":{
                 "positions":instancerPosition
@@ -330,10 +324,6 @@ class MoveRope(tasks.BaseTask):
                 "velocity":cubeLvelocity,
                 "distance":self._distanceL
             },
-            # "jointForce":{
-            #     "Y":force[0],
-            #     "Z":force[1]
-            # }
         }
         return observations
     def pre_step(self, time_step_index: int, simulation_time: float) -> None:
@@ -372,7 +362,10 @@ class MoveRope(tasks.BaseTask):
 class Rep(tasks.BaseTask):
     def __init__(self, name):
         super().__init__(name=name, offset=None)
+        self._shot=False
+        self._counter = 0
         self._position=None
+        self._out_dir="D:/Documents/SoftwareDoc/isaac_sim/repData"
         return 
     def set_up_scene(self, scene):
         super().set_up_scene(scene)
@@ -381,27 +374,44 @@ class Rep(tasks.BaseTask):
         self._create()
         return
     def _create(self):
-        self.counter = 1
-        # self._cam = rep.create.camera(position=(0.9785764057632471, 0.7441298738486223, 1.3842901349795438), rotation=(87.5772, 2.2571424e-13, 142.54659))
-        self._rp = rep.create.render_product("/OmniverseKit_Persp", (1024, 1024)) 
+        # Create camera
+        self._light = rep.create.light(
+            position=(0, 1, 1.25), 
+            look_at="/World/Rope0/rigidBodyInstancer/capsule",
+            light_type="cylinder",
+            intensity=10000)
+        self._camera = rep.create.camera(
+            position=(0, 2, 1.25),
+            look_at="/World/Rope0/rigidBodyInstancer/capsule",
+        )
+        # Attach camera to render product
+        self._rp = rep.create.render_product(self._camera, resolution=(1024, 1024))
+        # self._rp = rep.create.render_product("/OmniverseKit_Persp", (1024, 1024)) 
         # self._rp = rep.create.render_product("/Replicator/Camera_Xform/Camera", (1024, 1024))
         self._writer = rep.WriterRegistry.get("BasicWriter")
-        out_dir = "C:/Users/Wang Song/Desktop/sence_creater/issac sim/_out_sdrec"
+        out_dir = self._out_dir
         print(f"Writing data to {out_dir}")
-        self._writer.initialize(output_dir=out_dir, rgb=True, semantic_segmentation=True, pointcloud=True)
+        self._writer.initialize(
+            output_dir=out_dir, 
+            rgb=True, 
+            # semantic_segmentation=True, 
+            pointcloud=True,
+            pointcloud_include_unlabelled=False)
         self._writer.attach(self._rp)
         return
     def pre_step(self, time_step_index: int, simulation_time: float) -> None:
-        print("i go here!!!")
-        if self.counter== 50:
-            print("Got it!")
-            rep.orchestrator.step_async(rt_subframes=8)
-            rep.orchestrator.wait_until_complete_async()
-            self.counter = 1
-        else:
-            self.counter += 1
-
+        # print("i go here!!!")
+        self._counter += 1
+        if not self._shot and self._counter == 30:
+            # print("Got it!")
+            self._shot=True
+            # 
+            self._counter = 0
+        elif self._shot :
+            self._shot = False
         return super().pre_step(time_step_index, simulation_time)
+    def is_done(self):
+        return self._shot
     # def get_observations(self):
     #     return None
 
@@ -415,29 +425,58 @@ class HelloWorld(BaseSample):
         # We add the task to the world here
         # world.add_task(MoveRope(name="my_first_task", world=world))
         world.add_task(MoveRope(name="my_first_task"))
-        world.add_task(Rep(name="datalogger"))
+        world.add_task(Rep(name="replicator"))
         capsule=rep.get.prim_at_path("/World/Rope0/rigidBodyInstancer/capsule")
         with capsule:
             rep.modify.semantics([('class', 'Rope')])
 
 
         return
+     
     async def setup_post_load(self):
         self._world:World=self.get_world()
+        self._ouputdata=[]
+        self._out_dir="D:/Documents/SoftwareDoc/isaac_sim/outdata.csv"
         # # 关闭物块儿的外力响应
         self._dynamicCubeR:objects.DynamicCuboid=self._world.scene.get_object("DynamicCubeR")
         # # print(self._dynamicCubeR)
         # self._dynamicCubeR.disable_rigid_body_physics()
         self._dynamicCubeL:objects.DynamicCuboid=self._world.scene.get_object("DynamicCubeL")
         # # print(self._dynamicCubeL)
-        # self._dynamicCubeL.disable_rigid_body_physics()
+        # self._dynamicCubeL.disable_rigrep.orchestrator.step_async(rt_subframes=8)
+            # rep.orchestrator.wait_until_complete_async()id_body_physics()
         # # print("get world ok!!")
+        # self._dataRecord=threading.Thread(target=data_record)
+        # self._dataRecord.start()
         
         self._world.add_physics_callback("move_close_to_target",callback_fn=self.moveCube)
-        
+        self._world.add_physics_callback("shot",callback_fn=self.shot)
         await self._world.play_async()
         return 
-    
+    # async def setup_pre_reset(self):
+    #     self._dataRecord.join()
+    #     return 
+    def data_record(self):
+        if self._ouputdata == None:
+            return 
+        # 将数据列表转换为 DataFrame
+        df = pd.DataFrame(self._ouputdata)
+        # 将 DataFrame 写入文本文件（CSV 格式）
+        df.to_csv(self._out_dir, index=False)
+        print(f"Data successfully written to {self._out_dir}.")
+        
+    def shot(self,step_size):
+        time_step=self._world.current_time_step_index
+        if self._world.is_done("replicator"):
+            print(time_step)
+            # print("shot called :",self._world.current_time_step_index)
+            rep.orchestrator.step_async(rt_subframes=8)
+            rep.orchestrator.wait_until_complete_async()
+        current_observations=self._world.get_observations("my_first_task")
+        # print("label geted :",self._world.current_time_step_index)
+        self._ouputdata.append({"time_step":time_step,"value":current_observations["pointInstancer"]["positions"]})
+        if time_step % 100==0:
+            self.data_record()
     def moveCube(self,step_size):
        
         current_observations=self._world.get_observations("my_first_task")
@@ -456,7 +495,6 @@ class HelloWorld(BaseSample):
         if self._world.is_done("my_first_task"):
             currentvelocityR=current_observations["DynamicCubeR"]["velocity"]
             velocityR = -currentvelocityR
-            # self._dynamicCubeR.set_world_pose(position=currentPositionR)
         else :
              velocityR =0.5*disVectorR/disVectorRNorm
         self._dynamicCubeR.set_linear_velocity(velocity=velocityR)
@@ -475,13 +513,11 @@ class HelloWorld(BaseSample):
         if  self._world.is_done("my_first_task"):
             currentvelocityL=current_observations["DynamicCubeR"]["velocity"]
             velocityL = -currentvelocityL
-            # self._dynamicCubeL.set_world_pose(position=currentPositionL)
         else:
             velocityL = 0.5*disVectorL/disVectorLNorm
         self._dynamicCubeL.set_linear_velocity(velocity=velocityL)
         
         # print("now velocityL is:",velocityL)
-        # print(self._world.is_done("my_first_task"))
         # 左右滑块儿到位，停止
         # if self._world.is_done("my_first_task") :
         #     self._world.pause()
