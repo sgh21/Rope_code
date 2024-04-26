@@ -381,7 +381,7 @@ class Rep(tasks.BaseTask):
             light_type="cylinder",
             intensity=10000)
         self._camera = rep.create.camera(
-            position=(0, 2, 1.25),
+            position=(0, 3, 1.25),
             look_at="/World/Rope0/rigidBodyInstancer/capsule",
         )
         # Attach camera to render product
@@ -399,6 +399,17 @@ class Rep(tasks.BaseTask):
             pointcloud_include_unlabelled=False)
         self._writer.attach(self._rp)
         return
+    # def pre_step(self, time_step_index: int, simulation_time: float) -> None:
+    #     print("i go here!!!")
+    #     if self.counter== 60:
+    #         print("Got it!")
+    #         rep.orchestrator.step_async(rt_subframes=8)
+    #         rep.orchestrator.wait_until_complete_async()
+    #         self.counter = 1
+    #     else:
+    #         self.counter += 1
+
+    #     return super().pre_step(time_step_index, simulation_time)
     def pre_step(self, time_step_index: int, simulation_time: float) -> None:
         # print("i go here!!!")
         self._counter += 1
