@@ -387,13 +387,17 @@ class Rep(tasks.BaseTask):
                         scale=rep.distribution.uniform((0.10, 0.15, 0.12), (0.35, 0.25, 0.3))
                     )
             return self._cube.node
-    def pre_step(self, time_step_index: int, simulation_time: float) -> None:
-        self._counter += 1
-        if  self._counter == self._interval:
-            print("Got it!")
-            self._writer.schedule_write()
-            self._counter = 0
-        return super().pre_step(time_step_index, simulation_time)
+    # 返回writer 到world 保证同步调用
+    def get_observations(self):
+        return {'writer':self._writer}
+    # def pre_step(self, time_step_index: int, simulation_time: float) -> None:
+    #     self._counter += 1
+    #     if  self._counter == self._interval:
+    #         print("Got it!")
+    #         self._writer.schedule_write()
+    #         print("!!!!!!write time!!!!!:",time.time())
+    #         self._counter = 0
+    #     return super().pre_step(time_step_index, simulation_time)
 
 class HelloWorld(BaseSample):
     def __init__(self) -> None:
@@ -417,12 +421,12 @@ class HelloWorld(BaseSample):
         self._out_dir="D:/Documents/SoftwareDoc/isaac_sim/repData"
         # # 关闭物块儿的外力响应
         self._dynamicCubeR:objects.DynamicCuboid=self._world.scene.get_object("DynamicCubeR")
-        # self._dynamicCubeR.disable_rigid_body_physics()
         self._dynamicCubeL:objects.DynamicCuboid=self._world.scene.get_object("DynamicCubeL")
-        # self._dynamicCubeL.disable_rigrep.orchestrator.step_async(rt_subframes=8)
-        
         self._world.add_physics_callback("move_close_to_target",callback_fn=self.moveCube)
         self._world.add_physics_callback("shot",callback_fn=self._wirteObservation)
+        # 获取replicator的writer
+        replicator = self._world.get_observations("replicator")
+        self._writer:rep.BasicWriter=replicator["writer"]
         await self._world.play_async()
         return 
     # def data_record(self):
@@ -436,16 +440,20 @@ class HelloWorld(BaseSample):
     def data_record(self,file_path):
         if self._ouputdata == None:
             return 
-        # 将数据列表转换为 nparrary
-        data_arrary=np.array(self._ouputdata)
-        # 将 data_arrary 写入文本文件（npy 格式）
-        np.save(file=file_path,arr=data_arrary)
+        # 将数据列表转换为 nparray
+        data_array=np.array(self._ouputdata)
+        data_array[:,2]+=1.5
+        # 将 data_array 写入文本文件（npy 格式）
+        np.save(file=file_path,arr=data_array)
         print(f"Data successfully written to {file_path}.")
     def _wirteObservation(self,step_size):
         time_step=self._world.current_time_step_index
-        current_observations=self._world.get_observations("my_first_task")
         # print("label geted :",self._world.current_time_step_index)
         if time_step % self._interval==0:
+            current_observations=self._world.get_observations("my_first_task")
+            print("!!!!!!observation time!!!!!:",time.time())
+            self._writer.schedule_write()
+            print("!!!!!!write time!!!!!:",time.time())
             self._ouputdata = current_observations["pointInstancer"]["positions"]
             file_path=f"{self._out_dir}/label_{time_step//self._interval-1:04d}.npy"
             self.data_record(file_path=file_path)
@@ -471,7 +479,7 @@ class HelloWorld(BaseSample):
             currentvelocityR=current_observations["DynamicCubeR"]["velocity"]
             velocityR = -currentvelocityR
         else :
-             velocityR =0.5*disVectorR/disVectorRNorm
+             velocityR =0.3*disVectorR/disVectorRNorm
         self._dynamicCubeR.set_linear_velocity(velocity=velocityR)
         # print("now velocityR is:",velocityR)
     
@@ -489,7 +497,7 @@ class HelloWorld(BaseSample):
             currentvelocityL=current_observations["DynamicCubeR"]["velocity"]
             velocityL = -currentvelocityL
         else:
-            velocityL = 0.5*disVectorL/disVectorLNorm
+            velocityL = 0.3*disVectorL/disVectorLNorm
         self._dynamicCubeL.set_linear_velocity(velocity=velocityL)
         # print("now velocityL is:",velocityL)
         # 左右滑块儿到位，停止
