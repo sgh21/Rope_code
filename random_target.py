@@ -1,6 +1,6 @@
 import numpy as np
 
-def randomTarget(originPoint=np.array([0,0,1.5]),radius=1.5):
+def randomTarget(originPoint=np.array([0,0,1.5]),radius=0.5):
   # 生成两个随机数组，保证R_x<0 L_x>0
   randomArrayR = np.random.uniform(low=-100,high=100,size=(3,))
   randomArrayR[0]=-np.abs(randomArrayR[0])

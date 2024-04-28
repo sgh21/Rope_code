@@ -164,8 +164,9 @@ class MoveRope(tasks.BaseTask):
             xformPath:Sdf.Path = self._defaultPrimPath.AppendChild(f"Rope{ropeInd}") 
             xform:UsdGeom.Xform=UsdGeom.Xform.Define(self._stage, xformPath) #建立一根绳子的Xform参考
             
-            y = yStart + ropeInd * self._ropeSpacing # 确定某根绳子在y,z方向上的分布
+            # y = yStart + ropeInd * self._ropeSpacing # 确定某根绳子在y,z方向上的分布
             z = self._height 
+            y=0
             xform.AddTranslateOp().Set(Gf.Vec3f(0, y, z))
             
             # capsule instancer
@@ -290,6 +291,8 @@ class MoveRope(tasks.BaseTask):
         timeCode=Sdf.TimeCode()
         timeCode.GetValue()
         instancerPosition = self._rboInstancer.GetPositionsAttr().Get(timeCode)
+        # instancerPosition=np.array(instancerPosition)
+        # PositionToWorld=instancerPosition+self._originPosition[1]
         observations={
             "pointInstancer":{
                 "positions":instancerPosition
@@ -306,6 +309,7 @@ class MoveRope(tasks.BaseTask):
                 "velocity":cubeLvelocity,
                 "distance":self._distanceL
             },
+            "originalPosition":self._originPosition
         }
         return observations
     def pre_step(self, time_step_index: int, simulation_time: float) -> None:
@@ -319,10 +323,10 @@ class MoveRope(tasks.BaseTask):
 
             self._task_achieved=True
         elif self._task_achieved :
-            print("sleep for a second!!")
-            time.sleep(0.1)
+            # print("sleep for a second!!")
+            time.sleep(0.05)
             self._goalR_position,self._goalL_position=randomTarget(originPoint=self._originPosition[1],radius=self._ropeLength/2)
-            print(self._goalR_position,self._goalL_position)
+            # print(self._goalR_position,self._goalL_position)
             self._distanceR = np.linalg.norm(cubeRposition-self._goalR_position)
             self._distanceL = np.linalg.norm(cubeLposition-self._goalL_position)
             self._task_achieved=False
@@ -367,12 +371,13 @@ class Rep(tasks.BaseTask):
         self._rp = rep.create.render_product(self._camera, resolution=(1024, 1024))
         self._writer = rep.WriterRegistry.get("BasicWriter")
         # 创造随机物块儿
-        self._cube = rep.create.cube( position=(0, 0.25 , 1.25),scale=(0.25,0.25,0.25) )
+        # self._cube=rep.create.cylinder(position=(0, 0.25 , 1.25),scale=(0.15,0.15,0.15))
+        self._cube = rep.create.cube( position=(0, 0.25 , 1.25),scale=(0.15,0.15,0.15) )
         # rep.randomizer.register(self._get_shapes)
         out_dir = self._out_dir
         self._writer.initialize(
             output_dir=out_dir, 
-            rgb=True, 
+            # rgb=True, 
             # semantic_segmentation=True, 
             pointcloud=True,
             pointcloud_include_unlabelled=False)
@@ -383,8 +388,9 @@ class Rep(tasks.BaseTask):
             with rep.trigger.on_frame(interval=self._interval):
                 with self._cube:
                     rep.modify.pose(
-                        position=rep.distribution.uniform((-0.3, 0, 1), (0.3, 0.5, 1.5)),
-                        scale=rep.distribution.uniform((0.10, 0.15, 0.12), (0.35, 0.25, 0.3))
+                        position=rep.distribution.uniform((-0.3, 0.3, 1), (0.3, 0.5, 1.5)),
+                        rotation=rep.distribution.uniform((-90,-90,-90),(90,90,90)),
+                        scale=rep.distribution.uniform((0.10, 0.10, 0.10), (0.2, 0.2, 0.2))
                     )
             return self._cube.node
     # 返回writer 到world 保证同步调用
@@ -401,7 +407,7 @@ class Rep(tasks.BaseTask):
 
 class HelloWorld(BaseSample):
     def __init__(self) -> None:
-        self._interval=30
+        self._interval=1
         super().__init__()
         return
 
@@ -445,18 +451,39 @@ class HelloWorld(BaseSample):
         data_array[:,2]+=1.5
         # 将 data_array 写入文本文件（npy 格式）
         np.save(file=file_path,arr=data_array)
-        print(f"Data successfully written to {file_path}.")
+        # print(f"Data successfully written to {file_path}.")
+    def print_progress_bar(self,iteration, total, prefix='', suffix='', length=50, fill='█', print_end='\r'):
+        """
+        打印文本进度条
+
+        :param iteration: 当前迭代次数
+        :param total: 总迭代次数
+        :param prefix: 进度条前缀文本
+        :param suffix: 进度条后缀文本
+        :param length: 进度条的长度（字符数）
+        :param fill: 用于填充进度条的字符
+        :param print_end: 打印结束符（默认为 '\r'，即不换行）
+        """
+        percent = ("{:.1f}").format(min(100 * (iteration / float(total)),100))
+        filled_length = int(length * iteration // total)
+        bar = fill * filled_length + '-' * (length - filled_length)
+        print(f'\r{prefix} |{bar}| {percent}% {suffix}', end=print_end)
+        # 当迭代完成时，打印一个换行符，使进度条消失
+        if iteration == total:
+            print()
+
+
     def _wirteObservation(self,step_size):
         time_step=self._world.current_time_step_index
-        # print("label geted :",self._world.current_time_step_index)
         if time_step % self._interval==0:
-            current_observations=self._world.get_observations("my_first_task")
-            print("!!!!!!observation time!!!!!:",time.time())
+            # self._world.pause_async()
             self._writer.schedule_write()
-            print("!!!!!!write time!!!!!:",time.time())
+            current_observations=self._world.get_observations("my_first_task")
             self._ouputdata = current_observations["pointInstancer"]["positions"]
-            file_path=f"{self._out_dir}/label_{time_step//self._interval-1:04d}.npy"
+            file_path=f"{self._out_dir}/label_{time_step//self._interval-5:04d}.npy"
             self.data_record(file_path=file_path)
+            # self._world.play_async()
+        self.print_progress_bar(iteration=time_step,total=1500,prefix="Completed:")
             # self._ouputdata.append({"time_step":time_step//30-1,"value":current_observations["pointInstancer"]["positions"]})
         # if time_step % (self._interval*10)==0:
         #     self.data_record()
@@ -468,7 +495,7 @@ class HelloWorld(BaseSample):
         # 控制右滑块儿
         targetPositionR = current_observations["DynamicCubeR"]["targetPosition"]
         currentPositionR =current_observations["DynamicCubeR"]["position"]
-        print("now positionR is:",currentPositionR)
+        # print("now positionR is:",currentPositionR)
         # 将速度归一化到定值，方向由位置差确定
         disVectorR=targetPositionR-currentPositionR
         disVectorRNorm=np.linalg.norm(disVectorR)
@@ -479,14 +506,14 @@ class HelloWorld(BaseSample):
             currentvelocityR=current_observations["DynamicCubeR"]["velocity"]
             velocityR = -currentvelocityR
         else :
-             velocityR =0.3*disVectorR/disVectorRNorm
+             velocityR =0.5*disVectorR/disVectorRNorm
         self._dynamicCubeR.set_linear_velocity(velocity=velocityR)
         # print("now velocityR is:",velocityR)
     
         # 控制左滑块儿
         targetPositionL = current_observations["DynamicCubeL"]["targetPosition"]
         currentPositionL =current_observations["DynamicCubeL"]["position"]
-        print("now positionL is:",currentPositionL)
+        # print("now positionL is:",currentPositionL)
         # 将速度归一化到定值，方向由位置差确定
         disVectorL=targetPositionL-currentPositionL
         disVectorLNorm=np.linalg.norm(disVectorL)
@@ -497,10 +524,10 @@ class HelloWorld(BaseSample):
             currentvelocityL=current_observations["DynamicCubeR"]["velocity"]
             velocityL = -currentvelocityL
         else:
-            velocityL = 0.3*disVectorL/disVectorLNorm
+            velocityL = 0.5*disVectorL/disVectorLNorm
         self._dynamicCubeL.set_linear_velocity(velocity=velocityL)
         # print("now velocityL is:",velocityL)
         # 左右滑块儿到位，停止
-        # if self._world.is_done("my_first_task") :
-        #     self._world.pause()
+        if self._world.current_time_step_index ==1501:
+            self._world.pause()
         return
