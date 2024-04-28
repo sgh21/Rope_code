@@ -64,7 +64,8 @@ class MoveRope(tasks.BaseTask):
         # Force or acceleration = stiffness * (targetPosition - position)>damping * (targetVelocity - velocity)
         self._rope_damping = 0#1*0.01*0.01# *0.00001 nothing happened# *10**10 nothing happened # mass*DIST_UNITS*DIST_UNITS/second/degrees.
         self._rope_stiffness =10 #0.1*0.01*0.01# *0.00001 nothing happened# *10**10 nothing happened#: mass*DIST_UNITS*DIST_UNITS/degrees/second/second
-
+        self._capsule_linear_damping = 10
+        self._capsule_angular_damping = 10
         # configure original position:
         self._height = self._ropeLength/2+1
 
@@ -89,17 +90,23 @@ class MoveRope(tasks.BaseTask):
         capsuleGeom.CreateRadiusAttr(self._linkRadius) #半径
         capsuleGeom.CreateAxisAttr("X") #伸展轴向
         capsuleGeom.CreateDisplayColorAttr().Set([self._ropeColor])
+        
         # 添加物理属性
         UsdPhysics.CollisionAPI.Apply(capsuleGeom.GetPrim())
-        UsdPhysics.RigidBodyAPI.Apply(capsuleGeom.GetPrim())
+        UsdPhysics.RigidBodyAPI.Apply(capsuleGeom.GetPrim()) 
         massAPI:UsdPhysics.MassAPI = UsdPhysics.MassAPI.Apply(capsuleGeom.GetPrim())
         massAPI.CreateDensityAttr().Set(self._density) #kg/m^3
+
         physxCollisionAPI:PhysxSchema.PhysxCollisionAPI = PhysxSchema.PhysxCollisionAPI.Apply(capsuleGeom.GetPrim())
         physxCollisionAPI.CreateRestOffsetAttr().Set(0.0)
         # Contact offset of a collision shape.
         # Default value -inf means default is picked by the simulation based on the shape extent.
         # Range: [maximum(0, restOffset), inf) Units: distance
         physxCollisionAPI.CreateContactOffsetAttr().Set(self._contactOffset)
+        # 设置胶囊体的角速度阻尼和线速度阻尼
+        capsuleRigidBodyAPI:PhysxSchema.PhysxRigidBodyAPI = PhysxSchema.PhysxRigidBodyAPI.Apply(capsuleGeom.GetPrim())
+        capsuleRigidBodyAPI.CreateLinearDampingAttr().Set(self._capsule_linear_damping)
+        capsuleRigidBodyAPI.CreateAngularDampingAttr().Set(self._capsule_angular_damping)
         physicsUtils.add_physics_material_to_prim(self._stage, capsuleGeom.GetPrim(), self._physicsMaterialPath)
     def _createJoint(self, jointPath):
         '''
@@ -139,17 +146,9 @@ class MoveRope(tasks.BaseTask):
             # joint drives for rope dynamics:
             driveAPI: UsdPhysics.DriveAPI = UsdPhysics.DriveAPI.Apply(d6Prim, d)
             driveAPI.CreateTypeAttr("force")
-            # maxForce=inf
-            # timeCode=Sdf.TimeCode()
-            # timeCode.GetValue()
-            # print("the max force is ",driveAPI.GetMaxForceAttr().Get(timeCode))
             driveAPI.CreateDampingAttr(self._rope_damping)
             # print("damping:",driveAPI.GetDampingAttr().Get(timeCode))
             driveAPI.CreateStiffnessAttr(self._rope_stiffness)
-            # self._arr.append(driveAPI.GetTypeAttr())
-            # print("target position",driveAPI.GetTargetPositionAttr().Get(timeCode)) #0.0
-            # 尝试添加Y,Z轴的力约束
-            # driveAPI.CreateMaxForceAttr(self._max_force)
     def _createRopes(self,scene:World.scene):
         """
         实现了pointInstancer和jointInstancer的定义和两者的连接
@@ -200,9 +199,6 @@ class MoveRope(tasks.BaseTask):
                                     scale=np.array([0.02, 0.01, 0.01]),   #Gf.Vec3f(0.045, 0.03, 0.03)  np.array([0.045, 0.03, 0.03])
                                     color=np.array([1.0, 0, 0]))
             scene.add(self._dynamicCubeR)
-            # print(self._dynamicCube)
-            # print(self._world.scene.get_object("DynamicCube"))
-            # print("create dunamicCube!!!!!!!")
            
             for linkInd in range(1,numLinks-1):
                 meshIndices.append(0) 
@@ -230,10 +226,6 @@ class MoveRope(tasks.BaseTask):
                                             [xStart + numLinks * linkLength,y,z]])
             self._goalR_position = self._originPosition[0]
             self._goalL_position = self._originPosition[2]
-            # self._goalR_position=np.array([0.8,1.8,2.6])
-            # self._goalL_position=np.array([0,2,2.6])
-
-
             ## 参数写入到容器 
             meshList:Usd.Relationship = self._rboInstancer.GetPrototypesRel()
             # add mesh reference to point instancer
@@ -294,7 +286,7 @@ class MoveRope(tasks.BaseTask):
         cubeRvelocity=self._dynamicCubeR.get_linear_velocity()
         cubeLposition,_ =self._dynamicCubeL.get_world_pose()
         cubeLvelocity=self._dynamicCubeL.get_linear_velocity()
-        # self._pointInstancer:UsdGeom.PointInstancer = self._stage.GetPrimAtPath("/World/Rope0/rigidBodyInstancer")
+
         timeCode=Sdf.TimeCode()
         timeCode.GetValue()
         instancerPosition = self._rboInstancer.GetPositionsAttr().Get(timeCode)
@@ -323,8 +315,6 @@ class MoveRope(tasks.BaseTask):
         ### 需要添加L的逻辑
         cubeRposition,_ =self._dynamicCubeR.get_world_pose()
         cubeLposition,_ =self._dynamicCubeL.get_world_pose()
-        # print(self._task_achieved)
-        # print("i go there")
         if not self._task_achieved and (np.mean(np.abs(self._goalR_position-cubeRposition))<0.02 or np.mean(np.abs(self._goalL_position-cubeLposition))<0.02) :
 
             self._task_achieved=True
@@ -350,8 +340,8 @@ class MoveRope(tasks.BaseTask):
 class Rep(tasks.BaseTask):
     def __init__(self, name):
         super().__init__(name=name, offset=None)
-        self._shot=False
         self._counter = 0
+        self._interval=30
         self._position=None
         self._out_dir="D:/Documents/SoftwareDoc/isaac_sim/repData"
         return 
@@ -361,13 +351,7 @@ class Rep(tasks.BaseTask):
         #print("the stage1 is:",self.stage1)                   # add the rope in the scene
         self._create()
         return
-    def _get_shapes(self):
-            with self._cube:
-                rep.modify.pose(
-                    position=rep.distribution.uniform((-0.3, 0, 1), (0.3, 0.5, 1.5)),
-                    scale=rep.distribution.uniform((0.10, 0.15, 0.12), (0.35, 0.25, 0.3))
-                )
-            return self._cube.node
+    
     def _create(self):
         # Create camera
         self._light = rep.create.light(
@@ -384,7 +368,7 @@ class Rep(tasks.BaseTask):
         self._writer = rep.WriterRegistry.get("BasicWriter")
         # 创造随机物块儿
         self._cube = rep.create.cube( position=(0, 0.25 , 1.25),scale=(0.25,0.25,0.25) )
-        rep.randomizer.register(self._get_shapes)
+        # rep.randomizer.register(self._get_shapes)
         out_dir = self._out_dir
         self._writer.initialize(
             output_dir=out_dir, 
@@ -392,25 +376,28 @@ class Rep(tasks.BaseTask):
             # semantic_segmentation=True, 
             pointcloud=True,
             pointcloud_include_unlabelled=False)
-        self._writer.attach(self._rp)
-        return
+        self._writer.attach(self._rp,trigger=None)
+        self._get_shapes()
+        return 
+    def _get_shapes(self):
+            with rep.trigger.on_frame(interval=self._interval):
+                with self._cube:
+                    rep.modify.pose(
+                        position=rep.distribution.uniform((-0.3, 0, 1), (0.3, 0.5, 1.5)),
+                        scale=rep.distribution.uniform((0.10, 0.15, 0.12), (0.35, 0.25, 0.3))
+                    )
+            return self._cube.node
     def pre_step(self, time_step_index: int, simulation_time: float) -> None:
-        # print("i go here!!!")
-        rep.randomizer._get_shapes()
-        # self._counter += 1
-        # if not self._shot and self._counter == 30:
-        #     # print("Got it!")
-        #     self._shot=True
-        #     # 
-        #     self._counter = 0
-        # elif self._shot :
-        #     self._shot = False
+        self._counter += 1
+        if  self._counter == self._interval:
+            print("Got it!")
+            self._writer.schedule_write()
+            self._counter = 0
         return super().pre_step(time_step_index, simulation_time)
-    def is_done(self):
-        return self._shot
 
 class HelloWorld(BaseSample):
     def __init__(self) -> None:
+        self._interval=30
         super().__init__()
         return
 
@@ -426,41 +413,45 @@ class HelloWorld(BaseSample):
      
     async def setup_post_load(self):
         self._world:World=self.get_world()
-        self._ouputdata=[]
-        self._out_dir="D:/Documents/SoftwareDoc/isaac_sim/outdata.csv"
+        self._ouputdata=None
+        self._out_dir="D:/Documents/SoftwareDoc/isaac_sim/repData"
         # # 关闭物块儿的外力响应
         self._dynamicCubeR:objects.DynamicCuboid=self._world.scene.get_object("DynamicCubeR")
-        # # print(self._dynamicCubeR)
         # self._dynamicCubeR.disable_rigid_body_physics()
         self._dynamicCubeL:objects.DynamicCuboid=self._world.scene.get_object("DynamicCubeL")
-        # # print(self._dynamicCubeL)
         # self._dynamicCubeL.disable_rigrep.orchestrator.step_async(rt_subframes=8)
         
         self._world.add_physics_callback("move_close_to_target",callback_fn=self.moveCube)
-        self._world.add_physics_callback("shot",callback_fn=self.shot)
+        self._world.add_physics_callback("shot",callback_fn=self._wirteObservation)
         await self._world.play_async()
         return 
-    def data_record(self):
+    # def data_record(self):
+    #     if self._ouputdata == None:
+    #         return 
+    #     # 将数据列表转换为 DataFrame
+    #     df = pd.DataFrame(self._ouputdata)
+    #     # 将 DataFrame 写入文本文件（CSV 格式）
+    #     df.to_csv(self._out_dir, index=False)
+    #     print(f"Data successfully written to {self._out_dir}.")
+    def data_record(self,file_path):
         if self._ouputdata == None:
             return 
-        # 将数据列表转换为 DataFrame
-        df = pd.DataFrame(self._ouputdata)
-        # 将 DataFrame 写入文本文件（CSV 格式）
-        df.to_csv(self._out_dir, index=False)
-        print(f"Data successfully written to {self._out_dir}.")
-        
-    def shot(self,step_size):
+        # 将数据列表转换为 nparrary
+        data_arrary=np.array(self._ouputdata)
+        # 将 data_arrary 写入文本文件（npy 格式）
+        np.save(file=file_path,arr=data_arrary)
+        print(f"Data successfully written to {file_path}.")
+    def _wirteObservation(self,step_size):
         time_step=self._world.current_time_step_index
-        # if self._world.is_done("replicator"):
-        #     print(time_step)
-        #     # print("shot called :",self._world.current_time_step_index)
-        #     rep.orchestrator.step_async(rt_subframes=8)
-        #     rep.orchestrator.wait_until_complete_async()
         current_observations=self._world.get_observations("my_first_task")
         # print("label geted :",self._world.current_time_step_index)
-        self._ouputdata.append({"time_step":time_step,"value":current_observations["pointInstancer"]["positions"]})
-        if time_step % 100==0:
-            self.data_record()
+        if time_step % self._interval==0:
+            self._ouputdata = current_observations["pointInstancer"]["positions"]
+            file_path=f"{self._out_dir}/label_{time_step//self._interval-1:04d}.npy"
+            self.data_record(file_path=file_path)
+            # self._ouputdata.append({"time_step":time_step//30-1,"value":current_observations["pointInstancer"]["positions"]})
+        # if time_step % (self._interval*10)==0:
+        #     self.data_record()
     def moveCube(self,step_size):
        
         current_observations=self._world.get_observations("my_first_task")
