@@ -8,8 +8,8 @@ from pxr import PhysxSchema #omni.usd.schema.physx
 from omni.physx.scripts import physicsUtils
 from omni.isaac.core.utils.stage import get_current_stage
 import sys
-sys.path.append(r'D:/softwares/python3.10.4/Lib/site-packages')
-import pandas as pd
+# sys.path.append(r'D:/softwares/python3.10.4/Lib/site-packages')
+# import pandas as pd
 sys.path.append(r'D:/Documents/SRT/ov/pkg/isaac_sim-2023.1.1/extension_examples/user_examples')
 from random_target import randomTarget
 import numpy as np
@@ -478,6 +478,7 @@ class HelloWorld(BaseSample):
         if time_step % self._interval==0:
             # self._world.pause_async()
             self._writer.schedule_write()
+            # rep.orchestrator.wait_until_complete_async()
             current_observations=self._world.get_observations("my_first_task")
             self._ouputdata = current_observations["pointInstancer"]["positions"]
             file_path=f"{self._out_dir}/label_{time_step//self._interval-5:04d}.npy"
