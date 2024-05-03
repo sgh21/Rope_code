@@ -408,6 +408,7 @@ class Rep(tasks.BaseTask):
 class HelloWorld(BaseSample):
     def __init__(self) -> None:
         self._interval=1
+        self._step=None
         super().__init__()
         return
 
@@ -475,13 +476,17 @@ class HelloWorld(BaseSample):
 
     def _wirteObservation(self,step_size):
         time_step=self._world.current_time_step_index
+        if not self._step:
+            self._step=time_step+1
+            # print(self._step)
         if time_step % self._interval==0:
             # self._world.pause_async()
+            # print(f"time_step:{time_step}")
             self._writer.schedule_write()
             # rep.orchestrator.wait_until_complete_async()
             current_observations=self._world.get_observations("my_first_task")
             self._ouputdata = current_observations["pointInstancer"]["positions"]
-            file_path=f"{self._out_dir}/label_{time_step//self._interval-5:04d}.npy"
+            file_path=f"{self._out_dir}/label_{time_step//self._interval-1-self._step:04d}.npy"
             self.data_record(file_path=file_path)
             # self._world.play_async()
         self.print_progress_bar(iteration=time_step,total=1500,prefix="Completed:")
