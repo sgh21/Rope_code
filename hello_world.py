@@ -53,14 +53,14 @@ class MoveRope(tasks.BaseTask):
         
 
         # configure ropes:
-        self._linkHalfLength = 0.01
-        self._linkRadius = 0.5 * self._linkHalfLength
-        self._ropeLength = 1 #3
+        self._linkHalfLength = 0.0075
+        self._linkRadius = 0.005 #1 * self._linkHalfLength
+        self._ropeLength = 0.75#3
         self._numRopes = 1
         self._ropeSpacing = 0.15 #0.15    ## the spacing between different ropes
         self._ropeColor = Gf.Vec3f(0.4, 0.2, 0.1)
-        self._coneAngleLimit = 5 #np.pi/36
-        self._density = 50* 27*0.01  # 变小可以看出力的作用变小，但没有看出阻尼和刚度的影响
+        self._coneAngleLimit = 0 #np.pi/36
+        self._density = 50* 27*0.01*4  # 变小可以看出力的作用变小，但没有看出阻尼和刚度的影响
         # Force or acceleration = stiffness * (targetPosition - position)>damping * (targetVelocity - velocity)
         self._rope_damping = 0#1*0.01*0.01# *0.00001 nothing happened# *10**10 nothing happened # mass*DIST_UNITS*DIST_UNITS/second/degrees.
         self._rope_stiffness =10 #0.1*0.01*0.01# *0.00001 nothing happened# *10**10 nothing happened#: mass*DIST_UNITS*DIST_UNITS/degrees/second/second
@@ -70,7 +70,7 @@ class MoveRope(tasks.BaseTask):
         self._height = self._ropeLength/2+1
 
         # physics options:
-        self._contactOffset = 2.0*0.01*0.3  ###
+        self._contactOffset = 2.0*0.01*0.3*4  ###
         self._physicsMaterialPath:Sdf.Path = self._defaultPrimPath.AppendChild("PhysicsMaterial")
         #print("The path is: ",self._physicsMaterialPath)
         UsdShade.Material.Define(self._stage, self._physicsMaterialPath)
@@ -368,7 +368,8 @@ class Rep(tasks.BaseTask):
             look_at="/World/Rope0/rigidBodyInstancer/capsule",
         )
         # Attach camera to render product
-        self._rp = rep.create.render_product(self._camera, resolution=(1024, 1024))
+        # self._rp = rep.create.render_product(self._camera, resolution=(1024,1024))
+        self._rp = rep.create.render_product(self._camera, resolution=(2048, 2048))
         self._writer = rep.WriterRegistry.get("BasicWriter")
         # 创造随机物块儿
         # self._cube=rep.create.cylinder(position=(0, 0.25 , 1.25),scale=(0.15,0.15,0.15))
@@ -390,7 +391,7 @@ class Rep(tasks.BaseTask):
                     rep.modify.pose(
                         position=rep.distribution.uniform((-0.3, 0.3, 1), (0.3, 0.5, 1.5)),
                         rotation=rep.distribution.uniform((-90,-90,-90),(90,90,90)),
-                        scale=rep.distribution.uniform((0.10, 0.10, 0.10), (0.2, 0.2, 0.2))
+                        scale=rep.distribution.uniform((0.05, 0.05, 0.05), (0.15, 0.15, 0.15))
                     )
             return self._cube.node
     # 返回writer 到world 保证同步调用
@@ -409,6 +410,8 @@ class HelloWorld(BaseSample):
     def __init__(self) -> None:
         self._interval=1
         self._step=None
+        # self._data_size=200001
+        self._data_size=75001
         super().__init__()
         return
 
@@ -449,7 +452,7 @@ class HelloWorld(BaseSample):
             return 
         # 将数据列表转换为 nparray
         data_array=np.array(self._ouputdata)
-        data_array[:,2]+=1.5
+        data_array[:,2]+=1.375
         # 将 data_array 写入文本文件（npy 格式）
         np.save(file=file_path,arr=data_array)
         # print(f"Data successfully written to {file_path}.")
@@ -489,7 +492,7 @@ class HelloWorld(BaseSample):
             file_path=f"{self._out_dir}/label_{time_step//self._interval-1-self._step:04d}.npy"
             self.data_record(file_path=file_path)
             # self._world.play_async()
-        self.print_progress_bar(iteration=time_step,total=1500,prefix="Completed:")
+        self.print_progress_bar(iteration=time_step,total=self._data_size,prefix="Completed:")
             # self._ouputdata.append({"time_step":time_step//30-1,"value":current_observations["pointInstancer"]["positions"]})
         # if time_step % (self._interval*10)==0:
         #     self.data_record()
@@ -512,7 +515,7 @@ class HelloWorld(BaseSample):
             currentvelocityR=current_observations["DynamicCubeR"]["velocity"]
             velocityR = -currentvelocityR
         else :
-             velocityR =0.5*disVectorR/disVectorRNorm
+             velocityR =0.3*disVectorR/disVectorRNorm
         self._dynamicCubeR.set_linear_velocity(velocity=velocityR)
         # print("now velocityR is:",velocityR)
     
@@ -530,10 +533,10 @@ class HelloWorld(BaseSample):
             currentvelocityL=current_observations["DynamicCubeR"]["velocity"]
             velocityL = -currentvelocityL
         else:
-            velocityL = 0.5*disVectorL/disVectorLNorm
+            velocityL = 0.3*disVectorL/disVectorLNorm
         self._dynamicCubeL.set_linear_velocity(velocity=velocityL)
         # print("now velocityL is:",velocityL)
         # 左右滑块儿到位，停止
-        if self._world.current_time_step_index ==1501:
+        if self._world.current_time_step_index ==self._data_size:
             self._world.pause()
         return
